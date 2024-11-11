@@ -1,0 +1,23 @@
+version: 2.1
+
+orbs:
+  sonarcloud: sonarsource/sonarcloud@2.0.0
+
+jobs:
+  build:
+    docker:
+      - image: circleci/node:latest # Change this if you need a specific Node version
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies and build project
+          command: |
+            npm install # Installs all dependencies
+            npm run build # Builds the project if needed, or omit if not building
+      - sonarcloud/scan
+
+workflows:
+  main:
+    jobs:
+      - build:
+          context: SonarCloud
