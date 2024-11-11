@@ -189,10 +189,10 @@ app.post('/login', loginLimiter, (req, res) => {
   }
   
   // Validate and sanitize inputs
-  username = sanitizeInput(username);
-  accountNumber = sanitizeInput(accountNumber);
+  const sanitizedUsername = sanitizeInput(username);
+  const sanitizedAccountNumber = sanitizeInput(accountNumber);
 
-  const query = { username: username };
+  const query = { username: sanitizedUsername };
 
   MongoClient.connect(url, (err, db) => {
       if (err) return res.status(500).json({ error: 'Server error' });
@@ -203,7 +203,7 @@ app.post('/login', loginLimiter, (req, res) => {
               
               if (!user) return res.status(400).json({ msg: 'Invalid username' });
 
-              if (user.accountNum !== accountNumber) {
+              if (user.accountNum !== sanitizedAccountNumber) {
                   return res.status(400).json({ msg: 'Invalid account number' });
               }
 
