@@ -23,17 +23,23 @@ Figure 3: The above image shows this app has no issues but, failed due to no uni
 Figure 4: The above image shows the same thing as figure 3 but now in the github console.
 
 ### Important notes
-When testing the app using the React client it doesnt send data to the server side. But when you run using postman and the react app link it works.<br/>
+When testing the app using the React client it doesnt send data to the server side due to network errors. But when you run using postman and the react app link it works.<br/>
 Before testing the data, please open the termianl in vs code and type the following commands:<br/>
 1. cd server
 2. npm run serve
 3. open a new terminal
 4. cd client
-5. npm start
+5. npm start web
 <br/>
-To test the verify transaction use the following credentials:<br/>
+
+To test the verify transaction use the staff credentials:<br/>
 {
   "username": "saralee",
   "accountNumber": "987654321",
   "password": "P@ssw0rd123"
+}
+{
+  "username": "aliceJ89",
+  "accountNumber": 45678901234,
+  "password": "aliceSecure!789"
 }
