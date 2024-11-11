@@ -7,7 +7,7 @@
 • Angelo El-Hage (ST10156147)<br/>
 
 ### Youtube/Video link
-https://youtu.be/sYRgL6YVKfE
+https://youtu.be/iF8UCTVexp0
 
 ### Circlei-ci pipeline and SonarQube
 <img width="1440" alt="Circle-ci Passed all checks" src="https://github.com/user-attachments/assets/e02e9c20-d413-4b5d-8831-583c0a961d17">
