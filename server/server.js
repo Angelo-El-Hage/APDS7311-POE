@@ -15,7 +15,7 @@ const app = express();
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const port = 3000;
+const { MongoClient } = require('mongodb');
 
 app.use(cors())
 
@@ -28,7 +28,6 @@ app.use(helmet({
     },
   },
 }));
-
 
 // Connect to MongoDB using mongoose
 mongoose.connect(process.env.MONGODB_URI)
@@ -78,6 +77,7 @@ app.use((req, res, next) => {
 // Define register route with RegEx-based whitelisting
 app.post('/register', async (req, res) => {
   const {fullname, idNum, accountNum, username, email,password } = req.body;
+  const url = process.env.MONGODB_URI;
 
   // Define RegEx patterns for whitelisting
   // const idPattern = /^\d{6}\d{4}[0-1]\d{2}$/; 
@@ -96,13 +96,6 @@ app.use(bodyParser.json());
   if(!fullname){
     return res.status(400).send("Full Name is required.");
   }
-
-  // Sanitize input fields to prevent XSS attacks
-  const sanitizedFullname = validator.escape(fullname);
-  const sanitizedIdNum = validator.escape(idNum);
-  const sanitizedAccountNum = validator.escape(accountNum);
-  const sanitizedUsername = validator.escape(username);
-  const sanitizedEmail = validator.escape(email);
 
   // Validate id number
   if (!idPattern.test(idNum)) {
@@ -131,6 +124,13 @@ app.use(bodyParser.json());
   if (!passwordPattern.test(password)) {
     return res.status(400).send("Password must be at least 8 characters, including one uppercase letter, one lowercase letter, one number, and one special character.");
   }
+  
+  // Sanitize input fields to prevent XSS attacks
+  const sanitizedFullname = validator.escape(fullname);
+  const sanitizedIdNum = validator.escape(idNum);
+  const sanitizedAccountNum = validator.escape(accountNum);
+  const sanitizedUsername = validator.escape(username);
+  const sanitizedEmail = validator.escape(email);
 
   // If all validations pass, proceed to the password hashing and user creation process
   try {
@@ -149,12 +149,29 @@ app.use(bodyParser.json());
       password: hashedPassword, // Store hashed password
       role: 'customer' // Default role
     });
+    
+    // Connect to MongoDB and insert the new user
+    MongoClient.connect(url, { useNewUrlParser: true, useUnifiedTopology: true }, async (err, client) => {
+      if (err) {
+        console.error('Database connection error:', err);
+        return res.status(500).send('Failed to connect to database');
+      }
 
-    // Save the new user (Mongoose handles sanitization and escaping)
-    await newUser.save();
+      const db = client.db(); // Access the database
+      const usersCollection = db.collection('users'); // Reference to the users collection
 
-    // Send a successful message to the client
-    return res.status(201).send('The user registration was successful, and the password was securely hashed.');
+      try {
+        // Insert the new user into the database
+        await usersCollection.insertOne(newUser);
+        res.status(201).send('User registration successful.');
+      } catch (dbError) {
+        console.error('Error saving user to database:', dbError);
+        res.status(500).send('Failed to save user to database');
+      } finally {
+        client.close(); // Ensure the connection is closed after the operation
+      }
+    });
+
   } catch (error) {
     // Catch any errors during the registration process
     console.error('Registration error encountered:', error.message);
@@ -262,3 +279,18 @@ http.createServer((req, res) => {
 }).listen(80, () => {
   console.log('HTTP server listening on port 80, redirecting to HTTPS');
 }); 
+
+http.createServer((req, res) => {
+  // Check if the URL starts with the desired pattern
+  if (req.url.startsWith("https://localhost:301")) {
+    // Redirect to the same URL but with HTTPS
+    res.writeHead(301, { "Location": `https://${req.headers.host}${req.url}` });
+    res.end();
+  } else {
+    // Default action if URL doesn't match
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("No redirect for this URL");
+  }
+}).listen(80, () => {
+  console.log('HTTP server listening on port 80, redirecting to HTTPS');
+});
