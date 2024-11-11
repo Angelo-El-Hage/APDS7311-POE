@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: cimg/node:16  # Use the next-gen CircleCI image for Node.js
+      - image: cimg/node:lts  # Use the latest LTS version of Node.js
     steps:
       - checkout
       - run:
