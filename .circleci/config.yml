@@ -1,0 +1,21 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/node:lts  # Use the latest LTS version
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: cd server && npm install
+      - sonarcloud/scan
+
+orbs:
+  sonarcloud: sonarsource/sonarcloud@2.0.0
+
+workflows:
+  main:
+    jobs:
+      - build:
+          context: SonarCloud
