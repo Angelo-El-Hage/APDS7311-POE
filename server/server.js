@@ -69,9 +69,9 @@ const options = {
 
 // Add middleware to redirect HTTP to HTTPS (Optional for better security)
 app.use((req, res, next) => {
-  if (!req.secure) {
-    return res.redirect(`https://${req.headers.host}${req.url}`);
-  }
+  if (request.query.url.startsWith("http://localhost:3000/")) {
+      response.redirect(request.query.url);
+   }
   next();
 });
 
@@ -81,12 +81,11 @@ app.post('/register', async (req, res) => {
 
   // Define RegEx patterns for whitelisting
   // const idPattern = /^\d{6}\d{4}[0-1]\d{2}$/; 
-  const idPattern = /^\d{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])\d{4}[01]\d{2}$/; // Valid South African ID number format
+  const idPattern = /^\d{2}(0\d|1[0-2])(0\d|[12]\d|3[01])\d{4}[01]\d{2}$/; // Valid South African ID number format
   const accountPattern = /^\d{6,11}$/; // Account number pattern between 6-11 digits
   const usernamePattern = /^[a-zA-Z0-9]+$/;  // Allow only alphanumeric characters
   const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;  // Basic email format
   const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/; // At least 8 characters, one uppercase, one lowercase, one number, and one special character
-
   const bodyParser = require('body-parser');
 
 // Middleware to parse request bodies (important for handling POST data)
@@ -97,6 +96,13 @@ app.use(bodyParser.json());
   if(!fullname){
     return res.status(400).send("Full Name is required.");
   }
+
+  // Sanitize input fields to prevent XSS attacks
+  const sanitizedFullname = validator.escape(fullname);
+  const sanitizedIdNum = validator.escape(idNum);
+  const sanitizedAccountNum = validator.escape(accountNum);
+  const sanitizedUsername = validator.escape(username);
+  const sanitizedEmail = validator.escape(email);
 
   // Validate id number
   if (!idPattern.test(idNum)) {
@@ -133,19 +139,19 @@ app.use(bodyParser.json());
     //Hash the plain text password with bcrypt
     const hashedPassword = await bcrypt.hash(password, saltFactors);
 
-    // Create a new user object 
-    const newUser = {
-      fullname,
-      idNum,
-      accountNum,
-      username,
-      email,
+    // Create a new user object safely with sanitized data
+    const newUser = new User({
+      fullname: sanitizedFullname,
+      idNum: sanitizedIdNum,
+      accountNum: sanitizedAccountNum,
+      username: sanitizedUsername,
+      email: sanitizedEmail,
       password: hashedPassword, // Store hashed password
-      role: 'customer'
-    };
+      role: 'customer' // Default role
+    });
 
-    // Store the new user 
-    await User.create(newUser);
+    // Save the new user (Mongoose handles sanitization and escaping)
+    await newUser.save();
 
     // Send a successful message to the client
     return res.status(201).send('The user registration was successful, and the password was securely hashed.');
@@ -166,7 +172,9 @@ app.post('/login', loginLimiter, async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({ username });
+    // Use findOne with strict parameters to prevent injection
+    const user = await User.findOne({ username: username }).lean(); // .lean() improves performance
+
     if (!user) return res.status(400).json({ msg: 'Invalid username' });
 
     if (user.accountNum !== accountNumber) {
@@ -247,13 +255,10 @@ https.createServer(options, app).listen(443, () => {
   console.log('HTTPS Server running on port 443');
 });
 
-/*HTTP server that redirects to HTTPS
+//HTTP server that redirects to HTTPS
 http.createServer((req, res) => {
   res.writeHead(301, { "Location": `https://${req.headers.host}${req.url}` });
   res.end();
 }).listen(80, () => {
   console.log('HTTP server listening on port 80, redirecting to HTTPS');
-}); */
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
+}); 
