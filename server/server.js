@@ -125,7 +125,7 @@ app.use(bodyParser.json());
     return res.status(400).send("Password must be at least 8 characters, including one uppercase letter, one lowercase letter, one number, and one special character.");
   }
   
-  // Sanitize input fields to prevent XSS attacks
+  // Sanitize input fields to prevent XSS attacks y
   const sanitizedFullname = validator.escape(fullname);
   const sanitizedIdNum = validator.escape(idNum);
   const sanitizedAccountNum = validator.escape(accountNum);
@@ -181,40 +181,43 @@ app.use(bodyParser.json());
 });
 
 // Login user with rate limiting applied
-app.post('/login', loginLimiter, async (req, res) => {
+app.post('/login', loginLimiter, (req, res) => {
   const { username, accountNumber, password } = req.body;
 
   if (!username || !accountNumber || !password) {
-    return res.status(400).json({ message: "All fields must be filled" });
+      return res.status(400).json({ message: "All fields must be filled" });
   }
 
-  try {
-    // Use findOne with strict parameters to prevent injection
-    const user = await User.findOne({ username: username }).lean(); // .lean() improves performance
+  const query = { username: username };
 
-    if (!user) return res.status(400).json({ msg: 'Invalid username' });
+  MongoClient.connect(url, (err, db) => {
+      if (err) return res.status(500).json({ error: 'Server error' });
 
-    if (user.accountNum !== accountNumber) {
-      return res.status(400).json({ msg: 'Invalid account number' });
-    }
+      db.collection("users")
+          .findOne(query, (err, user) => { // Noncompliant (based on initial example)
+              if (err) return res.status(500).json({ error: 'Server error' });
+              
+              if (!user) return res.status(400).json({ msg: 'Invalid username' });
 
-    // Compare the provided password with the stored hashed password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: 'Invalid password' });
+              if (user.accountNum !== accountNumber) {
+                  return res.status(400).json({ msg: 'Invalid account number' });
+              }
 
-    // Generate JWT token
-    const accessToken = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+              bcrypt.compare(password, user.password, (err, isMatch) => {
+                  if (err || !isMatch) return res.status(400).json({ msg: 'Invalid password' });
 
-    // Send the token as the response
-    res.json({ accessToken: accessToken });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
+                  const accessToken = jwt.sign(
+                      { id: user._id, role: user.role },
+                      process.env.JWT_SECRET,
+                      { expiresIn: '1h' }
+                  );
+
+                  res.json({ accessToken: accessToken });
+              });
+          });
+  });
 });
+
 
 // Create new payment (Customer only)
 app.post('/create', authMiddleware(['customer']), async (req, res) => {
@@ -273,13 +276,6 @@ https.createServer(options, app).listen(443, () => {
 });
 
 //HTTP server that redirects to HTTPS
-http.createServer((req, res) => {
-  res.writeHead(301, { "Location": `https://${req.headers.host}${req.url}` });
-  res.end();
-}).listen(80, () => {
-  console.log('HTTP server listening on port 80, redirecting to HTTPS');
-}); 
-
 http.createServer((req, res) => {
   // Check if the URL starts with the desired pattern
   if (req.url.startsWith("https://localhost:301")) {
