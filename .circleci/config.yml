@@ -3,15 +3,12 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: cimg/node:16.17.0  # Use a specific version tag for Node.js
+      - image: cimg/node:lts  # Use the latest LTS version
     steps:
       - checkout
       - run:
-          name: Navigate to server directory
+          name: Install dependencies
           command: cd server && npm install
-      - run:
-          name: Build project
-          command: cd server && npm run build
       - sonarcloud/scan
 
 orbs:
