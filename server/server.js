@@ -187,6 +187,10 @@ app.post('/login', loginLimiter, (req, res) => {
   if (!username || !accountNumber || !password) {
       return res.status(400).json({ message: "All fields must be filled" });
   }
+  
+  // Validate and sanitize inputs
+  username = sanitizeInput(username);
+  accountNumber = sanitizeInput(accountNumber);
 
   const query = { username: username };
 
@@ -217,7 +221,6 @@ app.post('/login', loginLimiter, (req, res) => {
           });
   });
 });
-
 
 // Create new payment (Customer only)
 app.post('/create', authMiddleware(['customer']), async (req, res) => {
