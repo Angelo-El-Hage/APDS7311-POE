@@ -16,6 +16,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const { MongoClient } = require('mongodb');
+const validator = require('validator');
 
 app.use(cors())
 
@@ -28,9 +29,10 @@ app.use(helmet({
     },
   },
 }));
+const uri = process.env.MONGODB_URI;
 
 // Connect to MongoDB using mongoose
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(uri)
   .then(() => console.log('Connected to database!'))
   .catch((error) => console.log('Connection failed:', error.message));
 
@@ -56,7 +58,7 @@ const authMiddleware = (roles = []) => (req, res, next) => {
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login requests per `window` per 15 minutes
+  max: 7, // Limit each IP to 5 login requests per `window` per 15 minutes
   message: 'Too many login attempts from this IP, please try again later.'
 });
 
@@ -68,16 +70,17 @@ const options = {
 
 // Add middleware to redirect HTTP to HTTPS (Optional for better security)
 app.use((req, res, next) => {
-  if (request.query.url.startsWith("http://localhost:3000/")) {
-      response.redirect(request.query.url);
-   }
+  if (req.query.url && req.query.url.startsWith("http://localhost:3000/")) {
+      res.redirect(req.query.url);
+  }
   next();
 });
 
 // Define register route with RegEx-based whitelisting
 app.post('/register', async (req, res) => {
   const {fullname, idNum, accountNum, username, email,password } = req.body;
-  const url = process.env.MONGODB_URI;
+  //const url = process.env.MONGODB_URI;
+  const client = new MongoClient(uri);
 
   // Define RegEx patterns for whitelisting
   // const idPattern = /^\d{6}\d{4}[0-1]\d{2}$/; 
@@ -134,6 +137,7 @@ app.use(bodyParser.json());
 
   // If all validations pass, proceed to the password hashing and user creation process
   try {
+    await client.connect();
     //Increased security by using 12 factors
     const saltFactors = 12;
     //Hash the plain text password with bcrypt
@@ -150,28 +154,16 @@ app.use(bodyParser.json());
       role: 'customer' // Default role
     });
     
-    // Connect to MongoDB and insert the new user
-    MongoClient.connect(url, { useNewUrlParser: true, useUnifiedTopology: true }, async (err, client) => {
-      if (err) {
-        console.error('Database connection error:', err);
-        return res.status(500).send('Failed to connect to database');
-      }
+    // Choose the database and collection
+    const database = client.db();
+    const collection = database.collection("users");
 
-      const db = client.db(); // Access the database
-      const usersCollection = db.collection('users'); // Reference to the users collection
+    // Insert a document without schema
+    const result = await collection.insertOne(newUser);
 
-      try {
-        // Insert the new user into the database
-        await usersCollection.insertOne(newUser);
-        res.status(201).send('User registration successful.');
-      } catch (dbError) {
-        console.error('Error saving user to database:', dbError);
-        res.status(500).send('Failed to save user to database');
-      } finally {
-        client.close(); // Ensure the connection is closed after the operation
-      }
-    });
-
+    console.log("Document inserted with _id:", result.insertedId);
+    return res.status(201).send('The user registration was successful, and the password was securely hashed.');
+    
   } catch (error) {
     // Catch any errors during the registration process
     console.error('Registration error encountered:', error.message);
@@ -181,20 +173,52 @@ app.use(bodyParser.json());
 });
 
 // Login user with rate limiting applied
-app.post('/login', loginLimiter, (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
   const { username, accountNumber, password } = req.body;
+  const client = new MongoClient(uri);
 
   if (!username || !accountNumber || !password) {
       return res.status(400).json({ message: "All fields must be filled" });
   }
   
   // Validate and sanitize inputs
-  const sanitizedUsername = sanitizeInput(username);
-  const sanitizedAccountNumber = sanitizeInput(accountNumber);
+  const sanitizedUsername = validator.escape(username);
+  const sanitizedPassword = validator.escape(password);
+  const sanitizedAccountNumber = validator.escape(accountNumber.toString());
 
   const query = { username: sanitizedUsername };
 
-  MongoClient.connect(url, (err, db) => {
+  await client.connect();
+
+  // Specify the database and collection
+  const database = client.db();
+  const collection = database.collection('users');
+
+  // Find the user by username
+  const user = await collection.findOne({ username });
+  if (!user) return res.status(400).json({ msg: 'Invalid username ' });
+
+  // Validate the account number
+  if (user.accountNum !== accountNumber) {
+    return res.status(400).json({ msg: 'Invalid account number' });
+  }
+
+  // Compare the provided password with the stored hashed password
+  const isMatch = await bcrypt.compare(sanitizedPassword, user.password);
+  if (!isMatch) {
+    return res.status(400).json({ msg: 'Invalid password' });
+  }
+
+  // Generate the JWT token
+  const accessToken = jwt.sign(
+    { id: user._id, role: user.role }, // Include only necessary fields
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' } // Optional: set token expiration
+  );
+
+  return res.json({ accessToken: accessToken });
+  /*
+  MongoClient.connect(process.env.MONGODB_URI, (err, db) => {
       if (err) return res.status(500).json({ error: 'Server error' });
 
       db.collection("users")
@@ -203,7 +227,7 @@ app.post('/login', loginLimiter, (req, res) => {
               
               if (!user) return res.status(400).json({ msg: 'Invalid username' });
 
-              if (user.accountNum !== sanitizedAccountNumber) {
+              if (user.accountNumber !== sanitizedAccountNumber) {
                   return res.status(400).json({ msg: 'Invalid account number' });
               }
 
@@ -219,7 +243,7 @@ app.post('/login', loginLimiter, (req, res) => {
                   res.json({ accessToken: accessToken });
               });
           });
-  });
+  }); */
 });
 
 // Create new payment (Customer only)
@@ -241,7 +265,7 @@ app.post('/create', authMiddleware(['customer']), async (req, res) => {
   }
 });
 
-app.get('/transactions', async (req, res) => {
+app.get('/transactions', authMiddleware(['employee']), async (req, res) => {
   try {
     const transactions = await Transaction.find()
       .sort({ status: 1 }) // 1 for ascending order, sorts 'pending' before 'verified'
